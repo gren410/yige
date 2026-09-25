@@ -126,6 +126,13 @@ select:focus-visible {
 html {
   font-size: 16px; /* 输入框字号 ≥16px：iOS 聚焦时才不会强制放大 */
   -webkit-text-size-adjust: 100%;
+  /* 页面整体不滚动：滚动交给 .page-main（见下方骨架说明） */
+  height: 100%;
+  overflow: hidden;
+  /* 禁双击放大（任务书 §10 新增口径）。iOS 10 之后的 Safari 会忽略
+     viewport 里的 user-scalable=no，这里才是真正生效的那一处。
+     只留「点」和「滚动」：双击不放大，双指缩放也关掉。 */
+  touch-action: manipulation;
 }
 
 body {
@@ -135,15 +142,28 @@ body {
   color: var(--text);
   line-height: 1.5;
   /* 禁用 100vh：用 dvh + fill-available 双保险（任务书硬约束） */
-  min-height: -webkit-fill-available;
-  min-height: 100dvh;
-  /* 锁外层橡皮筋（iOS） */
+  height: 100%;
+  height: 100dvh;
+  /* 页面级橡皮筋关掉；内容区自己再锁一层（见 .page-main） */
   overscroll-behavior: none;
-  /* 安全区撑开：顶部/底部不顶到系统 UI */
-  padding-top: env(safe-area-inset-top);
+  overflow: hidden;
+  /* 安全区撑开：顶部交给 .page-header（它才是贴顶的那块），
+     左右下留在这里 —— 底部与左右的安全区所有页面都要。 */
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: max(1rem, env(safe-area-inset-left));
   padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* 弹性容器放在 #app（而不是 body）：
+   header 和 main 的直接父级是 #app，放 body 上会被中间这层 div 截断 →
+   #app 的高度永远等于内容高度，main 的 flex:1 拿不到约束就撑破容器，
+   滚动条会跑到整页上去。#app 有高度、又是个弹性列，main 才真的被限住。 */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 button, input, select, textarea {
@@ -151,21 +171,24 @@ button, input, select, textarea {
   color: inherit;
 }
 
-/* ---------- 页面骨架（单元1 建；单元9d 加吸顶） ---------- */
+/* ---------- 页面骨架（单元1 建；单元9d 加吸顶；iOS 滚动修复改版） ---------- */
 
-/* 顶部条吸顶（单元9d）：四页（主界面 / 盒内 / 卡片 / 模板）共用这一个头部，
-   一起吸顶 —— 滚到哪儿都还看得见左上的返回、右上的「完成 / 编辑 / 删除」，
-   编辑卡片滑到底时那两个按钮不会再滑出屏幕。
-   · top 取安全区而不是 0：iPhone 全屏（viewport-fit=cover）时内容是从屏幕顶开始的，
-     写 0 的话吸顶后会被状态栏压住。安全区为 0 的设备（电脑）等同于 top:0。
-   · 背景必须是不透明的：内容要从它下面穿过去，靠这层底色遮住。
+/* 顶部条固定（单元9d 引入，本轮改成真固定）。
+   结构：body 是个 100dvh 的纵向弹性容器，头部 flex-shrink:0 不参与滚动，
+   只有下面的 .page-main 滚 —— 这样 iOS 的橡皮筋只发生在内容区内部，
+   头部再也不会被带着滑出屏幕。
+
+   · 顶部安全区从 body 挪到这里：整页只有这一块贴着屏幕顶边，
+     由它撑开状态栏的高度才准（body 现在是 overflow:hidden 的容器，
+     它的 padding-top 会被头部的背景色一起遮盖，看不出效果）。
+   · 背景必须是不透明的：滚动的卡片要从它下面穿过去。
    · z-index 抬起来：不然滚上来的卡片会盖在头部上面。 */
 .page-header {
-  position: sticky;
-  top: env(safe-area-inset-top, 0px);
+  flex-shrink: 0;
+  position: relative;
   z-index: 20;
   background: var(--bg);
-  padding-top: 1.5rem;
+  padding-top: calc(1.5rem + env(safe-area-inset-top, 0px));
   padding-bottom: 0.5rem;
 }
 
@@ -174,7 +197,18 @@ button, input, select, textarea {
   font-weight: 500;
 }
 
+/* 内容区：整页唯一的滚动容器。
+   · flex:1 + min-height:0：弹性子项的默认 min-height 是 auto，
+     不写 0 的话内容再长也不会出滚动条（会被撑破容器）。
+   · -webkit-overflow-scrolling: touch：iOS 上的惯性滚动，手感跟系统一致。
+   · overscroll-behavior: contain：把橡皮筋关在内容区里，
+     滑到头不会把整页带着一起弹（这是「版头卡出去」的第二个诱因）。 */
 .page-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding-top: 0.5rem;
   padding-bottom: 2rem;
 }
@@ -312,6 +346,12 @@ button, input, select, textarea {
 
 body.sheet-open {
   overflow: hidden; /* 面板打开时锁住背后页面滚动 */
+}
+
+/* 滚动容器已经是 .page-main 了（见骨架），锁 body 管不到它，
+   所以这里要单独再锁一层 —— 否则面板开着，背后内容还能跟着手指滑。 */
+body.sheet-open .page-main {
+  overflow: hidden;
 }
 
 .sheet-overlay {
@@ -577,7 +617,9 @@ body.sheet-open {
    ============================================================ */
 
 .box-head {
-  padding-top: 0.75rem;
+  /* 三级页的头部比主界面矮一点，但顶部安全区必须原样带上
+     （直接写 0.75rem 会把 .page-header 的安全区覆盖掉 → 内容顶到状态栏底下） */
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
   padding-bottom: 0;
 }
 
@@ -712,7 +754,9 @@ body.sheet-open {
   }
 }
 
-/* 键盘弹起时把底部留白加上键盘高度（--kb 由 main.js 的 visualViewport 写入） */
+/* 键盘弹起时把底部留白加上键盘高度（--kb 由 main.js 的 visualViewport 写入）。
+   .page-main 是滚动容器，这条 padding 也跟着一起滚，所以聚焦底部输入框时
+   系统把可视区推上来之后，最后一行仍然有地方可滚。 */
 .page-main {
   padding-bottom: calc(2rem + var(--kb, 0px));
 }
@@ -720,7 +764,8 @@ body.sheet-open {
 /* ---------- 顶部：返回 + 标题 + 已保存小字 + 删除 ---------- */
 
 .detail-head {
-  padding-top: 0.75rem;
+  /* 同 .box-head：安全区要带上 */
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
   padding-bottom: 0;
 }
 
@@ -1661,6 +1706,11 @@ body.confirm-open {
   overflow: hidden; /* 弹窗打开时锁住背后页面滚动 */
 }
 
+/* 同 .sheet-open：滚动容器是 .page-main，得单独锁它 */
+body.confirm-open .page-main {
+  overflow: hidden;
+}
+
 /* ---------- 居中确认弹窗 ---------- */
 
 .confirm-overlay {
@@ -1828,7 +1878,8 @@ body.confirm-open {
 }
 
 .tpl-head {
-  padding-top: 0.75rem;
+  /* 同 .box-head：安全区要带上 */
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
   padding-bottom: 0;
 }
 

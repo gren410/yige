@@ -2,8 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <!-- viewport-fit=cover: 为 iPhone 刘海/底部安全区预留（配合 CSS env()） -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- viewport-fit=cover: 为 iPhone 刘海/底部安全区预留（配合 CSS env()）
+       maximum-scale=1 + user-scalable=no：这个 app 不需要缩放（双击放大只会误触）。
+       注意 iOS 10 以后 Safari 会忽略这两个值，真正管用的是 CSS 里的 touch-action。 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>一格</title>
 
   <!-- PWA（单元10）。任务书 §10：状态栏样式必须用 default，
