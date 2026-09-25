@@ -42,7 +42,6 @@ import {
   goBack,
   goHome,
   route,
-  enableEdgeSwipe,
   setLeaveGuard,
 } from "./router.js";
 import { escapeHtml } from "./util/dom.js";
@@ -412,7 +411,11 @@ async function boot() {
   ]);
   setState({ boxes, templates, cardCounts, ready: true });
 
-  enableEdgeSwipe(document.body); // 左缘右滑返回（盒内 / 详情页生效）
+  /* 左缘右滑返回：**已按用户要求去掉**（2026-09-25）。
+     自定义手势和 iOS Safari 自带的左缘返回手势区重叠，在盒内页上下滚卡片时
+     手指擦到左边缘就会被误判成「返回」（用户实测「在盒内页左滑就退到主界面」）。
+     现在返回只有两条路：左上角返回按钮、浏览器/系统的后退。
+     iPhone 上系统自带的左缘右滑返回同样有效（那是浏览器在管，不归我们代码）。 */
   trackKeyboard();
 
   registerServiceWorker(); // 离线缓存（只有 https / localhost 装得上）
