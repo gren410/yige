@@ -1,0 +1,2736 @@
+/* ============================================================
+   一格 · 基础样式（单元1：外壳）
+   规范要点（任务书 §8.6 / §10 / §16）：
+   - 系统字体栈，不引入网络字体
+   - 用 rem，不写死 px（基础字号 16px 保证 iOS 输入框不放大）
+   - 高度用 100dvh / -webkit-fill-available，禁用 100vh
+   - 深浅色跟随系统（prefers-color-scheme）
+   ============================================================ */
+
+:root {
+  /* 浅色主题变量（iOS 分组背景风格） */
+  --bg: #F2F2F7;              /* 页面底色 */
+  --card: #FFFFFF;            /* 内容卡片 */
+  --text: #1C1C1E;            /* 近黑正文 */
+  --text-2: rgba(60, 60, 67, 0.6);       /* 次要文字 */
+  --border: rgba(60, 60, 67, 0.12);      /* 细边框 */
+  --fill: rgba(120, 120, 128, 0.12);     /* 搜索框/输入底色 */
+  --accent: #4DA3FF;          /* 主色（天蓝，与色板一致） */
+  --danger: #FF3B30;          /* 出错/未保存（单元7 的「未保存」小字） */
+  /* 计时按钮的一对色（单元9e）：开始＝绿（走），结束＝红（停）。
+     和 --danger 分开命名 —— 红在这里不是「危险」，是「停下来」，
+     将来想换成别的颜色只动这一处。 */
+  --go: #34C759;
+  --stop: #FF3B30;
+  --radius: 12px;             /* 中等偏圆 */
+  --shadow-strength: 1;       /* 阴影强度（深色模式下调低） */
+
+  /* ---------- 动效参数（毛刺修复 A 组） ----------
+     全站动效只从这一组取值。以后要「快一点 / 慢一点 / 柔和一点」只改这里，
+     不用翻选择器；也不会再出现「同一套参数被抄到五六处、改一处漏一处」。
+     分工：
+       --dur-fade  纯透明度（遮罩、底部小条一起淡）
+       --dur-slide 位移（底部面板上滑、小条浮起）
+       --dur-pop   居中弹窗的缩放
+     曲线同理分两条：
+       --ease-out   起步快、收尾柔 —— 给「位移」用（iOS 手感）
+       --ease-fade  均匀推进 —— 给「淡入 / 缩放」用。
+       原来这两种都借了位移曲线，所以淡入看着是「啪一下到位」。 */
+  --dur-fade: 0.32s;
+  --dur-slide: 0.36s;
+  --dur-pop: 0.3s;
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-fade: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 遮罩（浮层背后那层压暗）：原来是 32% 黑压在中灰底上，看着是一块深灰。
+     浅色下压到 22% 就够「后面被推远」的意思，不至于抢戏。 */
+  --overlay: rgba(0, 0, 0, 0.22);
+
+  /* 居中弹窗的起点缩放：0.92 只差 8%，肉眼看不出来「从小到大」，
+     放大到 14% 才读得出这个动作。 */
+  --pop-from: 0.86;
+
+  /* 浮层（底部面板 / 居中弹窗）的底色。浅色下就是卡片白；
+     深色下要比页面底（纯黑）亮一级，不然面板和白底糊成一片、看不出边界。 */
+  --panel: var(--card);
+
+  /* 让浏览器原生的东西（输入框、滚动条、日期选择器）也跟随系统明暗（单元10）。
+     不写这一句，深色下这些原生控件仍是白的。 */
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --card: #1C1C1E;
+    --text: #FFFFFF;
+    --text-2: rgba(235, 235, 245, 0.6);
+    --border: rgba(84, 84, 88, 0.6);
+    --fill: rgba(120, 120, 128, 0.24);
+    --danger: #FF453A;
+    --go: #30D158;
+    --stop: #FF453A;
+    --shadow-strength: 0;
+    /* 深色下背景本来就是纯黑，遮罩再黑也没东西可压，
+       但保持同一条规矩：深色下要更暗才分得出前后。 */
+    --overlay: rgba(0, 0, 0, 0.32);
+    /* 深色下页面底是纯黑、卡片是近黑，浮层沿用卡片色就「糊成一片」。
+       抬一级到深灰，面板边界才看得见（毛刺第 5 条的后半）。 */
+    --panel: #2C2C2E;
+  }
+}
+
+/* 系统「减弱动态效果」开着时，把浮层的动效压到最短。
+   这不是可选项：对晕动敏感的人，浮层「从下往上滑」本身就是不舒服的来源。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fade: 0.01ms;
+    --dur-slide: 0.01ms;
+    --dur-pop: 0.01ms;
+  }
+}
+
+/* ---------- 基础重置 ---------- */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  /* 点按高亮（毛刺修复 B 组）：iOS 默认给手指点到的元素罩一层 18% 黑、
+     约 100 毫秒。全站原本只在「加到主屏」那个按钮上关过，其余都漏了 ——
+     面积大的输入框最明显，看着就是「聚焦时闪一下深色」。
+     写在 * 上是一处顶所有：以后新加的控件自动就关掉了，不用再逐个补。 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 焦点描边政策（B 组另一半）：浏览器会给「当前有焦点」的控件画一圈描边，
+   Windows 上默认是蓝色；而 iOS 点按根本不画 —— 所以「只有电脑上有蓝框」。
+   规矩改成：键盘走路（Tab）才画一圈主色，鼠标点、手指点都不画。 */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 输入类例外：它们的「我聚焦了」由边框变色表示（.fd-input:focus / .nb-input:focus），
+   再叠一圈描边就重了。 */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+html {
+  font-size: 16px; /* 输入框字号 ≥16px：iOS 聚焦时才不会强制放大 */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  /* 禁用 100vh：用 dvh + fill-available 双保险（任务书硬约束） */
+  min-height: -webkit-fill-available;
+  min-height: 100dvh;
+  /* 锁外层橡皮筋（iOS） */
+  overscroll-behavior: none;
+  /* 安全区撑开：顶部/底部不顶到系统 UI */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- 页面骨架（单元1 建；单元9d 加吸顶） ---------- */
+
+/* 顶部条吸顶（单元9d）：四页（主界面 / 盒内 / 卡片 / 模板）共用这一个头部，
+   一起吸顶 —— 滚到哪儿都还看得见左上的返回、右上的「完成 / 编辑 / 删除」，
+   编辑卡片滑到底时那两个按钮不会再滑出屏幕。
+   · top 取安全区而不是 0：iPhone 全屏（viewport-fit=cover）时内容是从屏幕顶开始的，
+     写 0 的话吸顶后会被状态栏压住。安全区为 0 的设备（电脑）等同于 top:0。
+   · 背景必须是不透明的：内容要从它下面穿过去，靠这层底色遮住。
+   · z-index 抬起来：不然滚上来的卡片会盖在头部上面。 */
+.page-header {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+  background: var(--bg);
+  padding-top: 1.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.page-title {
+  font-size: 1.625rem;   /* 26px 大标题 */
+  font-weight: 500;
+}
+
+.page-main {
+  padding-top: 0.5rem;
+  padding-bottom: 2rem;
+}
+
+.placeholder {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  color: var(--text-2);
+  font-size: 0.9375rem;
+}
+
+/* ============================================================
+   主界面：盒子实物网格陈列（单元3）
+   iPhone 3 列（每格约 115px）；Windows 自适应列数（每格约 122px）
+   格子宽度下限 7rem 是为了「10 字盒名能完整显示」这条硬要求
+   ——下限 6rem 时电脑上每格仅 100px，5 个字一行放不下。
+   ============================================================ */
+
+.box-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  column-gap: 0.5rem;
+  row-gap: 1rem;
+}
+
+/* 宽屏（电脑）：自适应列数，整体限宽避免每格被拉得过大 */
+@media (min-width: 30rem) {
+  .box-grid {
+    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+    max-width: 40rem;
+    margin: 0 auto;
+  }
+}
+
+.box-cell {
+  display: flex;
+  justify-content: center;
+}
+
+/* 图标本身按格子宽度自适应；卡片区域禁用长按选字（任务书 §10） */
+.box-icon {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ============================================================
+   新建盒子入口（单元4）
+   与盒子同尺寸的一格虚线「+」，永远排在网格最后
+   ============================================================ */
+
+:root {
+  --line-strong: rgba(60, 60, 67, 0.3); /* 虚线与未选中控件的中性描边 */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --line-strong: rgba(235, 235, 245, 0.36);
+  }
+}
+
+.box-cell-add {
+  cursor: pointer;
+}
+
+.add-box {
+  position: relative;
+  width: 100%;
+  /* 与盒子图标同比例（viewBox 140 × 138），所以两行高度自然对齐 */
+  aspect-ratio: 140 / 138;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  color: var(--text-2);
+  /* iOS 手感：按压缩放（任务书 §8.5 视觉补偿） */
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 虚线框：inset 按图标留白算（左/右 10、上 18、下 12 ÷ 画布 140×138） */
+.add-box::before {
+  content: "";
+  position: absolute;
+  inset: 13% 7% 9%;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 10px;
+}
+
+.add-box:active {
+  transform: scale(0.97);
+}
+
+.add-box-plus {
+  position: relative;
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.add-box-plus::before,
+.add-box-plus::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.add-box-plus::before {
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.add-box-plus::after {
+  top: 50%;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  transform: translateY(-50%);
+}
+
+.add-box-text {
+  font-size: 0.6875rem; /* 11px：任务书 §8.6 最小字号 */
+}
+
+/* ============================================================
+   底部弹出面板（单元4）
+   ============================================================ */
+
+body.sheet-open {
+  overflow: hidden; /* 面板打开时锁住背后页面滚动 */
+}
+
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: var(--overlay);
+  opacity: 0;
+  /* 淡入改用均匀曲线（--ease-fade）：原来是借位移曲线，前 100 毫秒就走完 91%，
+     看着是「啪一下变黑，然后僵住不动」（毛刺第 5 条）。 */
+  transition: opacity var(--dur-fade) var(--ease-fade);
+}
+
+.sheet-overlay.is-open {
+  opacity: 1;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-radius: 16px 16px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  transform: translateY(100%);
+  transition: transform var(--dur-slide) var(--ease-out);
+}
+
+.sheet-overlay.is-open .sheet {
+  transform: translateY(0);
+}
+
+.sheet-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet-title {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.sheet-btn {
+  min-height: 2.75rem; /* 44pt 最小点击区（任务书 §8.6） */
+  padding: 0.5rem 0.625rem;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.sheet-cancel {
+  justify-self: start;
+  color: var(--text-2);
+}
+
+.sheet-confirm {
+  justify-self: end;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.sheet-confirm:disabled {
+  color: var(--text-2);
+  cursor: default;
+}
+
+.sheet-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem;
+}
+
+/* ---------- 新建盒子表单 ---------- */
+
+.nb-section + .nb-section {
+  margin-top: 1.25rem;
+}
+
+.nb-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.nb-hint {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+/* 面板里的一句说明（不是错误，只是告诉用户现在是什么情况） */
+.nb-note {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.nb-input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 1rem; /* ≥16px：iOS 聚焦时不会强制放大页面（任务书 §16） */
+  background: var(--fill);
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.nb-input::placeholder {
+  color: var(--text-2);
+}
+
+.nb-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* 同上：iOS 会让日期框无视 width:100%，压回块级才和别的框一样宽 */
+.nb-input[type="date"],
+.nb-input[type="datetime-local"],
+.nb-input[type="time"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: right;
+}
+
+.nb-input[type="datetime-local"],
+.nb-input[type="time"] {
+  text-align: left;
+}
+
+.nb-tpl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nb-tpl {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--fill);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.nb-tpl:active {
+  transform: scale(0.99);
+}
+
+/* 选中项描边用主色（:has 在 iOS 15.4+ / Chromium 105+ 可用） */
+.nb-tpl:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.nb-tpl input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.nb-tpl input[type="radio"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.nb-tpl input[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.nb-tpl-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.nb-tpl-name {
+  font-size: 0.9375rem;
+}
+
+.nb-tpl-sub {
+  font-size: 0.75rem;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-colors {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.25rem;
+}
+
+.nb-color {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.nb-color::before {
+  content: "";
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--c);
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 选中：外扩一圈同色环，色值本身不变 */
+.nb-color[aria-pressed="true"]::before {
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--c);
+}
+
+.nb-color:active::before {
+  transform: scale(0.92);
+}
+
+/* ============================================================
+   盒内页面（单元5）
+   结构：左上返回 → 盒子名大标题 + 右侧「＋」（与标题齐高） → 卡片流
+   ============================================================ */
+
+.box-head {
+  padding-top: 0.75rem;
+  padding-bottom: 0;
+}
+
+/* 返回按钮：箭头 + 上一层名称（任务书 §8.1），44pt 最小点击区 */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.75rem;
+  margin-left: -0.25rem;
+  padding: 0 0.25rem;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.back-arrow {
+  font-size: 1.5rem;
+  line-height: 1;
+  /* 让「‹」在视觉上和文字居中对齐 */
+  transform: translateY(-0.0625rem);
+}
+
+.back-btn:active {
+  opacity: 0.6;
+}
+
+/* 标题行：「＋」和盒子名同一行、同一高度 */
+.box-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* 新建卡片按钮：和 26px 大标题齐高的圆形主色按钮 */
+.add-card-btn {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.add-card-btn::before,
+.add-card-btn::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: #fff;
+  border-radius: 1px;
+}
+
+.add-card-btn::before {
+  width: 2px;
+  height: 0.875rem;
+  transform: translate(-50%, -50%);
+}
+
+.add-card-btn::after {
+  width: 0.875rem;
+  height: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.add-card-btn:active {
+  transform: scale(0.92);
+}
+
+/* ---------- 卡片流 ---------- */
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card-row {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 0.875rem 1rem;
+}
+
+.card-row-title {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 空状态 ---------- */
+
+.empty-state {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 0.9375rem;
+}
+
+.empty-state-sub {
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
+/* ============================================================
+   卡片详情页 + 10 种字段控件（单元6a）
+   ============================================================ */
+
+/* 开关 / 星星的「关」态底色（--fill 太浅，开关会看不出形状） */
+:root {
+  --switch-off: #E9E9EB;
+  --star-off: rgba(60, 60, 67, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --switch-off: #39393D;
+    --star-off: rgba(235, 235, 245, 0.24);
+  }
+}
+
+/* 键盘弹起时把底部留白加上键盘高度（--kb 由 main.js 的 visualViewport 写入） */
+.page-main {
+  padding-bottom: calc(2rem + var(--kb, 0px));
+}
+
+/* ---------- 顶部：返回 + 标题 + 已保存小字 + 删除 ---------- */
+
+.detail-head {
+  padding-top: 0.75rem;
+  padding-bottom: 0;
+}
+
+.detail-head-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* 标题吃掉所有剩余宽度，小字和「删除」被顶到最右边。
+   （单元8 加第三个元素后必须写成 flex:1，否则三个东西会平均分布开。） */
+.detail-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「已保存」小字（单元7）：任务书 §8.2 明确界面上没有保存按钮，
+   所以用一枚会自己淡出的小字告诉用户「存进去了」。
+   它常驻 DOM（只是透明），淡入淡出不会让标题跳动。 */
+.save-badge {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-2);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none; /* 纯提示，不挡任何点击 */
+}
+
+.save-badge-on {
+  opacity: 1;
+}
+
+/* 写库失败时的「未保存」：不自动消失，且用醒目色 */
+.save-badge-bad {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* 「删除」（单元8）：任务书 §8.5 的 danger 样式 = 危险动作用红字。
+   align-self 单独拎出来居中：整行是按基线对齐的（为了让小字跟标题基线齐），
+   而按钮比文字高，跟着基线对齐会显得往下坠。 */
+.detail-del-btn {
+  flex-shrink: 0;
+  align-self: center;
+  min-height: 2.75rem; /* 44pt 最小点击区（任务书 §8.6） */
+  padding: 0 0.25rem;
+  margin-right: -0.25rem; /* 抵掉 padding，让文字右缘跟页面右边距对齐 */
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.12s;
+}
+
+.detail-del-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  opacity: 0.7;
+}
+
+.detail-del-btn:disabled {
+  color: var(--text-2);
+  cursor: default;
+}
+
+/* ---------- 字段列表 ---------- */
+
+.field-list {
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.field-row {
+  padding: 0.75rem 1rem;
+}
+
+.field-row + .field-row {
+  border-top: 1px solid var(--border);
+}
+
+/* 勾选：标签在左、开关在右，同一行 */
+.field-row[data-type="check"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.field-label {
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+
+.field-row[data-type="check"] .field-label {
+  margin-bottom: 0;
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+/* ---------- 输入类控件 ---------- */
+
+.fd-input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.625rem;
+  font-size: 1rem; /* ≥16px：iOS 聚焦时不会把页面放大（任务书 §10） */
+  background: var(--fill);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.fd-input::placeholder {
+  color: var(--text-2);
+}
+
+.fd-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.fd-textarea {
+  min-height: 6.5rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* 日期 / 时间类控件（任务书 §10 的 iOS 适配）。
+   WebKit 把 type=date 之类的框渲染成 inline-flex，**iOS 17 直接无视 width:100%**，
+   而且它自带内边距、日期文字还居中 —— 于是在手机上宽度和其它输入框对不齐。
+   这里压回块级、把内建外观和内边距清掉；日期文字用系统右对齐（iOS 表单的惯例），
+   带时间的（datetime-local）保持左对齐，单独给它补回左侧内边距。 */
+.fd-input[type="date"],
+.fd-input[type="datetime-local"],
+.fd-input[type="time"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: right;
+}
+
+.fd-input[type="datetime-local"],
+.fd-input[type="time"] {
+  text-align: left;
+}
+
+/* 清掉内建外观后，iOS 的日期指示器（▾）会贴着边框，补一点呼吸位 */
+.fd-input[type="date"]::-webkit-calendar-picker-indicator,
+.fd-input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.fd-input[type="time"]::-webkit-calendar-picker-indicator {
+  margin-left: 0.375rem;
+  opacity: 0.55;
+}
+
+/* 数字 + 单位 */
+.fd-number {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fd-unit {
+  flex-shrink: 0;
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+
+/* ---------- 胶囊（单选 / 多选） ---------- */
+
+.fd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fd-chip {
+  min-height: 2rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--fill);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.fd-chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.fd-chip:active {
+  transform: scale(0.95);
+}
+
+/* ---------- 自由标签（标签字段没有预设选项时） ---------- */
+
+.fd-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.fd-tags:empty {
+  display: none;
+}
+
+.fd-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.625rem;
+  background: var(--fill);
+  border-radius: 999px;
+  font-size: 0.875rem;
+}
+
+.fd-tag-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---------- 评分（星星） ---------- */
+
+.fd-rating {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.fd-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--star-off);
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.fd-star[aria-pressed="true"] {
+  color: #FFC107;
+}
+
+.fd-star:active {
+  transform: scale(0.9);
+}
+
+/* ---------- 勾选开关 ---------- */
+
+.fd-switch {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.fd-switch input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+.fd-switch-track {
+  position: relative;
+  display: block;
+  width: 3.25rem;
+  height: 1.9375rem;
+  background: var(--switch-off);
+  border-radius: 999px;
+  transition: background 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.fd-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1.6875rem;
+  height: 1.6875rem;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.fd-switch input:checked + .fd-switch-track {
+  background: var(--accent);
+}
+
+.fd-switch input:checked + .fd-switch-track .fd-switch-knob {
+  transform: translateX(1.3125rem);
+}
+
+.fd-switch input:focus-visible + .fd-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- 图片字段（单元6b） ---------- */
+
+.fd-images {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.fd-img-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* 4.5rem ≈ 72px：iPhone 一行正好放 4 格（3 个图 + 加号不会掉行） */
+.fd-img,
+.fd-img-add {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 10px;
+}
+
+.fd-img {
+  position: relative;
+  overflow: hidden;
+  background: var(--fill);
+}
+
+.fd-img-pic {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 图片记录不在了（换设备、被清过数据）→ 显示占位，不显示破图 */
+.fd-img.is-missing .fd-img-pic {
+  display: none;
+}
+
+.fd-img.is-missing::before {
+  content: "图片不在本机";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--text-2);
+}
+
+/* 右上角删除：1.5rem 的热区，手指点得到 */
+.fd-img-del {
+  position: absolute;
+  top: 0.1875rem;
+  right: 0.1875rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.fd-img-del::before,
+.fd-img-del::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.625rem;
+  height: 1.5px;
+  border-radius: 1px;
+  background: #fff;
+}
+
+.fd-img-del::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.fd-img-del::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.fd-img-del:active {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+/* 末尾的虚线加号格 */
+.fd-img-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(120, 120, 128, 0.45);
+  background: transparent;
+  cursor: pointer;
+}
+
+.fd-img-add:active {
+  background: var(--fill);
+}
+
+.fd-img-plus {
+  position: relative;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.fd-img-plus::before,
+.fd-img-plus::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 1px;
+  background: var(--text-2);
+}
+
+.fd-img-plus::before {
+  width: 1.25rem;
+  height: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.fd-img-plus::after {
+  width: 2px;
+  height: 1.25rem;
+  transform: translate(-50%, -50%);
+}
+
+/* 多张字段才有的「已放几张」 */
+.fd-img-count {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+/* 隐藏的文件选择器：不能用 display:none，个别浏览器会不响应 click */
+.fd-file-input {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+/* ---------- 计时字段（单元9e） ----------
+
+   一条记录两行：上面「序号 + 做什么 + 开始/结束」，下面「时间小字 + 删除」。
+   这样排的理由：
+   · 手机上横着塞不下「文字框 + 两个按钮 + 时间」，会挤成一团；
+   · 时间放第二行正好跟内容错开，两种字重一眼分得清（用户要的「字体做出区分」）。
+   按钮宽度写死：「开始」「结束」都是两个字，宽度一样，互换时文字框不会跳。 */
+
+.fd-timer {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.fd-timer-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.fd-timer-row {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.fd-timer-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fd-timer-no {
+  flex: 0 0 auto;
+  min-width: 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums; /* 数字等宽：变成两位数时不会把文字框挤动 */
+}
+
+/* 文字框自己撑满剩下的地方；min-width:0 才能让它真的被压缩而不是顶出去 */
+.fd-timer-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fd-timer-btn {
+  flex: 0 0 auto;
+  width: 4.25rem;
+  min-height: 2.5rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--go);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* 正在计时 → 按钮变「结束」，同时换成停下来的红色 */
+.fd-timer-btn.is-stop {
+  background: var(--stop);
+}
+
+.fd-timer-btn:active {
+  transform: scale(0.95);
+}
+
+/* 没点过「开始」的那一条就只有上面这一层，下面那层不存在 */
+
+.fd-timer-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 1.375rem; /* 让过序号那一列，时间跟文字框左边对齐 */
+}
+
+.fd-timer-time {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 计时中的那条用醒目色，和已经结束的一眼分开 */
+.fd-timer-time.is-running {
+  color: var(--stop);
+}
+
+/* 「×」跟在按钮右边、和那一行同高（align-self:stretch）。
+   以前它独占下面那层，结果是「没点开始的条也白多出一行、里面只有一个叉」。
+   宽度只留 2rem，不抢文字框的地方；灰色，一眼能分出它是次要操作。 */
+.fd-timer-del {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 2rem;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fd-timer-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2.5rem;
+  background: none;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.fd-timer-add:active {
+  background: var(--fill);
+}
+
+/* 一个纯 CSS 画的加号（不引入图标字体，也免得用文字加号在不同字体下粗细不一） */
+.fd-timer-plus {
+  position: relative;
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.fd-timer-plus::before,
+.fd-timer-plus::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+
+.fd-timer-plus::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+
+.fd-timer-plus::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+
+/* 最下面那行「2 条 · 合计 00:45」 */
+.fd-timer-sum {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 清单字段（单元9g） ----------
+
+   一条一行：左边圈、中间文字框、右边「×」，和计时同一种排法。
+   圈的状态全靠行上的 data-done 决定（01 两种取值），
+   所以「勾一下」只需要翻这个属性，不用重画整列（见 field-control.js 的 paintTodoRow）。
+   行高、间距都跟计时对齐 —— 一个盒子里两种字段混着排时不会一高一矮。 */
+
+.fd-todo {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.fd-todo-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.fd-todo-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+/* 文字框自己撑满剩下的地方；min-width:0 才能让它真的被压缩而不是顶出去 */
+.fd-todo-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 圆圈：没勾是空心灰圈，勾上是绿底白钩。
+   白钩是纯 CSS 画的（把一段直角边框转 45 度），不引图标字体。 */
+.fd-todo-circle {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.fd-todo-circle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: 0.3125rem;
+  height: 0.5625rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+  transition: opacity 0.15s ease;
+}
+
+.fd-todo-row[data-done="1"] .fd-todo-circle {
+  background: var(--go);
+  border-color: var(--go);
+}
+
+.fd-todo-row[data-done="1"] .fd-todo-circle::after {
+  opacity: 1;
+}
+
+/* 做完的那条：字变灰 + 中间划线。**留在原位**（用户拍板）——
+   位置不动就还能一眼找回，也不用多一层「已完成」分组。 */
+.fd-todo-row[data-done="1"] .fd-todo-text {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+
+/* 「×」：跟计时那个同款，但清单右边没有按钮要避让，所以窄一些；
+   命中区仍撑到 44×44（手机上手指够得着）。 */
+.fd-todo-del {
+  flex: 0 0 auto;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* 「＋ 加一条」：跟计时那颗同款 */
+.fd-todo-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2.5rem;
+  background: none;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.fd-todo-add:active {
+  background: var(--fill);
+}
+
+.fd-todo-plus {
+  position: relative;
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.fd-todo-plus::before,
+.fd-todo-plus::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+
+.fd-todo-plus::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+}
+
+.fd-todo-plus::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+
+/* 最下面那行「3 条 · 已完成 1」 */
+.fd-todo-sum {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 松紧度 · 紧凑（单元9f） ----------
+
+   模板里选「紧凑」时，卡片详情页的字段区整体收一档：
+   字段行上下留白、计时控件的输入框和按钮、行距、字号全收一档。
+   宽松（默认）就完全不吃这套，还是原来的样子。
+
+   **浏览视角故意不跟**：用户拍板「浏览不管设置宽松还是紧凑，都按宽松显示」，
+   一屏里都是条目，紧凑版挤得看不清（见 template.js 的 densityOf）。 */
+
+.field-list.is-compact .field-row {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.field-list.is-compact .fd-timer {
+  gap: 0.375rem;
+}
+
+.field-list.is-compact .fd-timer-list {
+  gap: 0.625rem;
+}
+
+.field-list.is-compact .fd-timer-row {
+  gap: 0.125rem;
+}
+
+.field-list.is-compact .fd-timer-main {
+  gap: 0.375rem;
+}
+
+.field-list.is-compact .fd-timer .fd-input {
+  min-height: 2.25rem;
+  padding: 0.375rem 0.625rem;
+}
+
+.field-list.is-compact .fd-timer-btn {
+  min-height: 2.25rem;
+  width: 3.75rem;
+  font-size: 0.875rem;
+}
+
+.field-list.is-compact .fd-timer-no {
+  min-width: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.field-list.is-compact .fd-timer-sub {
+  padding-left: 1.125rem;
+}
+
+.field-list.is-compact .fd-timer-time {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+/* 紧凑时「×」也只是窄一点、小一点；高度跟着那一行走（stretch），
+   所以再怎么也够手指点，不用另外撑命中区。 */
+.field-list.is-compact .fd-timer-del {
+  width: 1.75rem;
+  font-size: 1rem;
+}
+
+.field-list.is-compact .fd-timer-add {
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+.field-list.is-compact .fd-timer-sum {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+/* 清单（单元9g）跟计时一起收一档：勾选圈、行距、字号、加一条、底部小字 */
+.field-list.is-compact .fd-todo {
+  gap: 0.375rem;
+}
+
+.field-list.is-compact .fd-todo-list {
+  gap: 0.625rem;
+}
+
+.field-list.is-compact .fd-todo-row {
+  gap: 0.5rem;
+}
+
+.field-list.is-compact .fd-todo .fd-input {
+  min-height: 2.25rem;
+  padding: 0.375rem 0.625rem;
+}
+
+.field-list.is-compact .fd-todo-circle {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.field-list.is-compact .fd-todo-circle::after {
+  width: 0.25rem;
+  height: 0.5rem;
+}
+
+/* 行矮了，命中区不能跟着矮（跟计时那个「×」同款处理） */
+.field-list.is-compact .fd-todo-del {
+  width: 2.5rem;
+  min-height: 2rem;
+  font-size: 1rem;
+}
+
+.field-list.is-compact .fd-todo-add {
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+.field-list.is-compact .fd-todo-sum {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+/* ---------- 卡片行：现在能点进去了 ---------- */
+
+.card-row {
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.card-row:active {
+  transform: scale(0.99);
+}
+
+.card-row-sub {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   确认弹窗 + 底部小条（单元8）
+   任务书 §8.5：破坏性操作二次确认 + danger 样式；Toast 带撤销。
+   ============================================================ */
+
+:root {
+  /* 小条在浅色下也走深色（iOS 的习惯：提示条反过来用深底白字）；
+     深色模式下页面本来就是黑的，改用比底稍亮的灰面 + 一圈细边 */
+  --toast-bg: rgba(28, 28, 30, 0.94);
+  --toast-action: #6CB6FF;
+  --toast-border: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --toast-bg: #2C2C2E;
+    --toast-border: rgba(120, 120, 128, 0.36);
+  }
+}
+
+body.confirm-open {
+  overflow: hidden; /* 弹窗打开时锁住背后页面滚动 */
+}
+
+/* ---------- 居中确认弹窗 ---------- */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60; /* 盖住底部面板 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--overlay);
+  opacity: 0;
+  /* 淡入改用均匀曲线（--ease-fade）：原来是借位移曲线，前 100 毫秒就走完 91%，
+     看着是「啪一下变黑，然后僵住不动」（毛刺第 5 条）。 */
+  transition: opacity var(--dur-fade) var(--ease-fade);
+}
+
+.confirm-overlay.is-open {
+  opacity: 1;
+}
+
+.confirm {
+  width: 100%;
+  max-width: 17rem; /* 约 272px，iOS 弹窗的常规宽度 */
+  background: var(--panel);
+  border-radius: 14px;
+  overflow: hidden;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  /* 「从小到大」：起点缩到 86%（原 8% 看不出动作），曲线换均匀的一条，
+     时长 0.3s —— 既读得出放大，又不拖（毛刺第 7 条）。 */
+  transform: scale(var(--pop-from));
+  transition: transform var(--dur-pop) var(--ease-fade);
+  outline: none; /* 焦点给的是弹窗本身，不要描边 */
+}
+
+.confirm-overlay.is-open .confirm {
+  transform: scale(1);
+}
+
+.confirm-body {
+  padding: 1.125rem 1rem 1rem;
+}
+
+.confirm-title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.confirm-msg {
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--border);
+}
+
+.confirm-btn {
+  min-height: 2.75rem; /* 44pt 最小点击区（任务书 §8.6） */
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.confirm-btn + .confirm-btn {
+  border-left: 1px solid var(--border);
+}
+
+/* iOS 上 navigator.vibrate 用不了（§8.5），按下的反馈只能靠视觉：
+   这一排按钮是紧挨着的格子，缩放会露出 1px 的缝，所以这里只做瞬时高亮 */
+.confirm-btn:active {
+  background: var(--fill);
+}
+
+.confirm-cancel {
+  color: var(--text-2);
+}
+
+.confirm-ok {
+  font-weight: 500;
+}
+
+/* 危险的动作用红字（§8.5 danger 样式） */
+.confirm-ok.is-danger {
+  color: var(--danger);
+}
+
+/* ---------- 底部小条（带撤销） ---------- */
+
+.toast {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  z-index: 70; /* 压在弹窗之上：撤销的入口不能被任何东西挡住 */
+  margin: 0 auto;
+  max-width: 26rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 12px;
+  background: var(--toast-bg);
+  border: 1px solid var(--toast-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  color: #fff;
+  opacity: 0;
+  transform: translateY(0.75rem);
+  transition: opacity var(--dur-fade) var(--ease-fade),
+    transform var(--dur-slide) var(--ease-out);
+}
+
+.toast.is-open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-msg {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.toast-action {
+  flex-shrink: 0;
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--toast-action);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-action:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ============================================================
+   模板编辑器（单元9a）
+   盒内页右上角「⋯」进来：字段清单（可改可排序可删）+ 添加字段 + 字段面板
+   ============================================================ */
+
+/* 换类型提醒用的琥珀色（不是错误，不能借红色） */
+:root {
+  --warn-bg: rgba(255, 149, 0, 0.12);
+  --warn-text: #A85B00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --warn-bg: rgba(255, 159, 10, 0.18);
+    --warn-text: #FFB340;
+  }
+}
+
+.tpl-head {
+  padding-top: 0.75rem;
+  padding-bottom: 0;
+}
+
+/* 标题行：「模板」和右上「完成」同一行 */
+.tpl-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+/* 「完成」＝文字按钮，44pt 命中区（和左上返回按钮对称） */
+.tpl-done-btn {
+  min-height: 2.75rem;
+  margin-right: -0.25rem;
+  padding: 0 0.25rem;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.tpl-done-btn:disabled {
+  color: var(--text-2);
+  cursor: default;
+}
+
+.tpl-done-btn:active:not(:disabled) {
+  opacity: 0.6;
+}
+
+/* 同一个模板被多个盒子用着时的提示 */
+.tpl-shared {
+  margin-bottom: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius);
+  background: var(--fill);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.tpl-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* ---------- 字段行：名字 / 类型 + 上移 下移 删除 ---------- */
+
+.tpl-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+}
+
+.tpl-field + .tpl-field {
+  border-top: 1px solid var(--border);
+}
+
+.tpl-field-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  min-height: 2.75rem;
+  padding: 0.25rem 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tpl-field-main:active {
+  opacity: 0.55;
+}
+
+.tpl-field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 字段名单独包一层才截得住省略号（flex 子项上的 ellipsis 不生效） */
+.tpl-field-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.9375rem;
+}
+
+/* 「标题」徽章：标出卡片标题取自哪个字段 */
+.tpl-tag {
+  flex-shrink: 0;
+  padding: 0 0.3125rem;
+  border-radius: 4px;
+  background: var(--fill);
+  color: var(--text-2);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+}
+
+.tpl-field-type {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  font-size: 0.75rem;
+}
+
+.tpl-ops {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.tpl-op {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.75rem; /* 44pt 最小点击区 */
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tpl-op:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.tpl-op:active:not(:disabled) {
+  opacity: 0.5;
+}
+
+.tpl-op-del {
+  color: var(--danger);
+}
+
+/* ---------- 添加字段 ---------- */
+
+.tpl-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 1rem;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.tpl-add:active {
+  opacity: 0.6;
+}
+
+.tpl-add-plus {
+  position: relative;
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+}
+
+.tpl-add-plus::before,
+.tpl-add-plus::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.tpl-add-plus::before {
+  width: 2px;
+  height: 0.875rem;
+  transform: translate(-50%, -50%);
+}
+
+.tpl-add-plus::after {
+  width: 0.875rem;
+  height: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.tpl-empty {
+  padding: 1.25rem 1rem;
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+
+.tpl-note {
+  margin-top: 1rem;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/* ---------- 盒内页右上角变成两个按钮（⋯ + ＋） ---------- */
+
+.box-head-ops {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tpl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tpl-btn:active {
+  opacity: 0.6;
+}
+
+/* ---------- 字段编辑面板 ---------- */
+
+.tf-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tf-type {
+  min-height: 2.25rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--fill);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.tf-type[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.tf-hint {
+  margin-top: 0.5rem;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+}
+
+/* 「换类型可能让已填内容显示不出来」的提醒（非错误，用琥珀色） */
+.tf-warn {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.tf-opt-warn {
+  margin-top: 0.5rem;
+  color: var(--danger);
+  font-size: 0.8125rem;
+}
+
+.tf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  font-size: 0.9375rem;
+}
+
+.tf-none {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+}
+
+/* ============================================================
+   模板编辑器 · 布局区与约束区（单元9b）
+   ============================================================ */
+
+/* 「字段」「布局」两个小节标题 */
+.tpl-sec {
+  margin: 1.25rem 0 0.5rem 0.25rem;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+}
+
+/* ---------- 布局区：一行一件事，点开挑 ---------- */
+
+.tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.9375rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tpl-row + .tpl-row {
+  border-top: 1px solid var(--border);
+}
+
+.tpl-row:active {
+  background: var(--fill);
+}
+
+/* 松紧度那行本身不是按钮（里面才是），按下去不给反馈 */
+.tpl-row-static {
+  cursor: default;
+}
+
+.tpl-row-static:active {
+  background: none;
+}
+
+.tpl-row-name {
+  flex-shrink: 0;
+}
+
+.tpl-row-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+.tpl-row-arrow {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+/* 松紧度：两格连体的分段按钮 */
+.tpl-seg {
+  flex-shrink: 0;
+  display: flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--fill);
+}
+
+.tpl-seg-btn {
+  min-height: 2rem;
+  padding: 0 0.875rem;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.tpl-seg-btn[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* ---------- 挑字段的面板 ---------- */
+
+.tpl-pick-hint {
+  margin-bottom: 0.75rem;
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.tpl-pick {
+  background: var(--fill);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.tpl-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.9375rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tpl-pick-item + .tpl-pick-item {
+  border-top: 1px solid var(--border);
+}
+
+.tpl-pick-item:active {
+  background: var(--card);
+}
+
+.tpl-pick-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 勾：选中才画出来（纯 CSS，不引图标） */
+.tpl-pick-check {
+  position: relative;
+  flex-shrink: 0;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.tpl-pick-item.is-on .tpl-pick-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.tpl-pick-item.is-on .tpl-pick-check::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: 0.3125rem;
+  height: 0.5625rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* ---------- 字段面板的「约束」区 ---------- */
+
+/* 带标题的整块行（默认值 / 范围）：标题在上，控件在下 */
+.tf-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-height: 0;
+  padding: 0.375rem 0;
+}
+
+.tf-row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+}
+
+/* 下拉框统一成输入框的样子（原生外观在各系统差别太大） */
+select.nb-input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-right: 2.25rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%),
+    linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position: right 1.25rem center, right 0.875rem center;
+  background-size: 0.375rem 0.375rem, 0.375rem 0.375rem;
+  background-repeat: no-repeat;
+}
+
+/* 上下限两个框并排 */
+.tf-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tf-range .nb-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 「范围」里日期版的下限/上限：并排两个块级框必须能收缩，
+   否则 flex 子项的 min-width:auto 会把它们撑出容器 */
+.tf-range .nb-input[type="date"] {
+  width: auto;
+  flex: 1 1 0;
+}
+
+/* 模板页「默认值 / 范围」里那些块级控件：让它们自己占满整行 */
+.tf-row-stack > .nb-input,
+.tf-row-stack > select.nb-input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 固定某一天的日期框，和上面的下拉框排成一行时不要跳出来 */
+.tf-def-dateval {
+  margin-top: 0.375rem;
+}
+
+.tf-range-sep {
+  flex-shrink: 0;
+  color: var(--text-2);
+}
+
+.tf-cons-note {
+  margin-top: 0.625rem;
+  color: var(--text-2);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   约束提醒（卡片详情页，单元9b）
+   只提醒不拦人：值照存，返回也照常走得掉
+   ============================================================ */
+
+/* 标了必填的字段，空着时亮起一枚小点 */
+.field-req {
+  display: none;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-left: 0.25rem;
+  border-radius: 50%;
+  background: var(--warn-text);
+  vertical-align: middle;
+}
+
+.field-req-on {
+  display: inline-block;
+}
+
+/* 超出范围：那一行下面出一句橙色小字 */
+.field-warn {
+  margin-top: 0.375rem;
+  color: var(--warn-text);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   松紧度 · 紧凑（单元9b · 模板 layout.density）
+   宽松＝原来的样子，所以只有紧凑需要写规则
+   ============================================================ */
+
+.card-list-compact {
+  gap: 0.25rem;
+}
+
+.card-list-compact .card-row {
+  padding: 0.5rem 0.875rem;
+}
+
+.card-list-compact .card-row-sub {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+}
+
+/* ============================================================
+   卡片浏览视角（单元9c）
+   点卡片进来先看到的是这一版：标签和值并排一行、只读、紧凑。
+   右上「编辑」才切到可填的样子。一行的行高和编辑视角的对比：
+   这里 38px，编辑视角 89.5px。
+   ============================================================ */
+
+/* 右上那两个文字按钮：浏览视角的「编辑」和编辑视角的「完成」，
+   排布跟原来的「删除」一致（44pt 点击区，靠负 margin 让文字右缘对齐页面） */
+.detail-edit-btn,
+.detail-done-btn {
+  flex-shrink: 0;
+  align-self: center;
+  min-height: 2.75rem; /* 44pt 最小点击区（任务书 §8.6） */
+  padding: 0 0.375rem;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.12s;
+}
+
+/* 「编辑」右边紧挨着「删除」：抵掉自己的右内边距，两个词才不显得离得远 */
+.detail-edit-btn {
+  margin-right: -0.375rem;
+}
+
+.detail-done-btn {
+  margin-right: -0.375rem;
+}
+
+.detail-edit-btn:active,
+.detail-done-btn:active {
+  transform: scale(0.94);
+  opacity: 0.7;
+}
+
+/* ---------- 内容区 ---------- */
+
+.cv-list {
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.cv-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.4375rem 1rem; /* 7px 上下 → 配 24px 行高正好 38px */
+  min-height: 2.375rem;
+}
+
+.cv-row + .cv-row {
+  border-top: 1px solid var(--border);
+}
+
+/* 标签列固定宽度：值才能一列对齐，扫下来快 */
+.cv-label {
+  flex: 0 0 auto;
+  width: 5rem;
+  font-size: 0.8125rem;
+  line-height: 1.5rem;
+  color: var(--text-2);
+  overflow-wrap: break-word;
+}
+
+.cv-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5rem; /* 和标签同一行高，首行才对得齐 */
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+/* 空字段占位（用户拍板：空字段也留一行，写个「—」） */
+.cv-none {
+  color: var(--text-2);
+}
+
+/* 正文完整显示、保留换行 */
+.cv-long {
+  white-space: pre-wrap;
+}
+
+.cv-rating {
+  color: #FFC107;
+  letter-spacing: 0.06em;
+}
+
+/* 多选：全部摊开成小胶囊 */
+.cv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.cv-chip {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--fill);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* 计时（单元9e）：一条一行，1. 内容（09:30-10:15，用时 00:45）
+   内容用正文字号 + 正文色，括号里的时间小一号 + 次要色 + 等宽数字 ——
+   两种字重分开，扫下来先看到「做了什么」，再对时间。 */
+.cv-timer {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.cv-timer-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.cv-timer-text {
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+.cv-timer-blank {
+  color: var(--text-2);
+}
+
+.cv-timer-time {
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 还在计时的那条 */
+.cv-timer-time.is-running {
+  color: var(--stop);
+}
+
+/* 清单（单元9g）：一条一行，圈 + 内容。
+   做完的那条留在原位、字变灰划线 —— 和编辑视角一个口径，看的时候不会「少了一条」。 */
+.cv-todo {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.cv-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.cv-todo-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.25rem; /* 跟第一行文字的中线对齐 */
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.cv-todo-dot::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: 0.25rem;
+  height: 0.4375rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.cv-todo-item.is-done .cv-todo-dot {
+  background: var(--go);
+  border-color: var(--go);
+}
+
+.cv-todo-item.is-done .cv-todo-dot::after {
+  opacity: 1;
+}
+
+.cv-todo-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.cv-todo-blank {
+  color: var(--text-2);
+}
+
+.cv-todo-item.is-done .cv-todo-text {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+
+/* 图片：一排缩略图（没有删除键、也没有加号） */
+.cv-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.125rem 0;
+}
+
+.cv-img {
+  display: block;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--fill);
+}
+
+.cv-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 取不到图（记录被清了）/ 非本地图 → 留一个空块，不显示破图 */
+.cv-img.is-missing,
+.cv-img-other {
+  background: var(--fill);
+}
+
+/* ============================================================
+   「添加到主屏幕」提示（单元10；任务书 §8.8）
+   一次性告知，只在 iPhone / iPad 的 Safari 里出现一次。
+   做成底部浮起来的一张小条：像系统通知，不像弹窗 —— 它不是必须要答的问题，
+   用户不理它也没关系（点「知道了」或点条子本身都能收掉）。
+   层级压在底部面板（60）和撤销小条（70）之下，别挡正经操作。
+   ============================================================ */
+
+.hs-hint {
+  position: fixed;
+  left: max(0.75rem, env(safe-area-inset-left));
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, calc(0.16 * var(--shadow-strength)));
+
+  /* 入场：从下方 12px 浮起来 */
+  opacity: 0;
+  transform: translateY(0.75rem);
+  transition: opacity var(--dur-fade) var(--ease-fade),
+    transform var(--dur-slide) var(--ease-out);
+}
+
+.hs-hint.is-open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hs-hint-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hs-hint-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.hs-hint-text {
+  margin-top: 0.1875rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.hs-hint-note {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  opacity: 0.85;
+}
+
+.hs-hint-ok {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  min-height: 2rem;
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.hs-hint-ok:active {
+  opacity: 0.5;
+}

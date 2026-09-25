@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <!-- viewport-fit=cover: 为 iPhone 刘海/底部安全区预留（配合 CSS env()） -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>一格</title>
+
+  <!-- PWA（单元10）。任务书 §10：状态栏样式必须用 default，
+       不能用 black-translucent（那会让内容顶到时间和电量底下）。 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="一格">
+  <!-- 状态栏底色跟着明暗走（两套主题各给一个） -->
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- 所有界面都渲染进这个容器，由 src/main.js 接管 -->
+  <div id="app"></div>
+
+  <!-- 兼容性兜底（任务书 §10：不满足最低版本时给提示页，不给白屏）。
+       ① nomodule：完全不认识 ES Module 的老浏览器会跑这一块。
+       ② 认识模块但缺关键能力（IndexedDB 等）的，当场提示。
+       ③ 模块脚本要是压根没跑起来（旧内核静默失败），6 秒后兜一句。 -->
+  <script nomodule>
+    document.getElementById("app").innerHTML =
+      '<main class="page-main"><div class="placeholder">这个浏览器太旧了，请更新系统，或改用新版 Safari / Edge 打开。</div></main>';
+  </script>
+  <script>
+    (function () {
+      var app = document.getElementById("app");
+      var tip = '<main class="page-main"><div class="placeholder">这个浏览器太旧了，请更新系统，或改用新版 Safari / Edge 打开。</div></main>';
+      var ok = false;
+      try {
+        ok = !!(window.indexedDB && window.Promise && window.fetch && window.CSS &&
+                window.CSS.supports && window.CSS.supports("display", "grid"));
+      } catch (e) {
+        ok = false;
+      }
+      if (!ok) {
+        app.innerHTML = tip;
+        return;
+      }
+      setTimeout(function () {
+        // main.js 一跑起来就会自己画骨架；还空着说明模块脚本没执行
+        if (!window.__yigeBooted && app && !app.firstElementChild) app.innerHTML = tip;
+      }, 6000);
+    })();
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
